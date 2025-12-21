@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Apex | Velocity-Based Training Tracker</title>
+    <title>Apex | Velocity-Based Training System</title>
 
     <!-- React / Tailwind / Chart.js / Socket.io -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -75,8 +75,8 @@
           data: {
             labels: [],
             datasets: [
-              { label: 'vx', data: [], borderColor: mutedGray, borderWidth: 1, pointRadius: 0, tension: 0.15 },
-              { label: 'vy', data: [], borderColor: mutedGray', borderWidth: 1, pointRadius: 0, tension: 0.15 },
+              { label: '', data: [], borderColor: '#6e6e6e', borderWidth: 1, pointRadius: 0, tension: 0.15 },
+              { label: '', data: [], borderColor: '#6e6e6e', borderWidth: 1, pointRadius: 0, tension: 0.15 },
               { label: 'vz', data: [], borderColor: '#fffbee', borderWidth: 2, pointRadius: 0, tension: 0.2 },
               { label: 'vt', data: [], borderColor: '#f3d36b', borderWidth: 2, pointRadius: 0, tension: 0.2 },
               // concentric vt - only present during concentric windows, null otherwise => no connecting lines
@@ -90,8 +90,7 @@
             interaction: { mode: 'index', intersect: false },
             plugins: {
               legend: {
-                labels: { color: '#e6e6e6' },
-                position: 'top'
+		display: false
               },
               tooltip: {
                 callbacks: {
@@ -107,7 +106,8 @@
             scales: {
               x: {
                 title: { display: true, text: 'Time (s)', color: '#f3d36b' },
-                ticks: { color: '#d1c29a' },
+                ticks: { color: '#d1c29a', 
+			 stepSize: 2},
                 grid: { color: 'rgba(200,150,80,0.06)' }
               },
               y: {
@@ -434,4 +434,5 @@
   </script>
 </body>
 </html>
+
 
