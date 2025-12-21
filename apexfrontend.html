@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Velocity-Based Training Tracker</title>
+    <title>Apex | Velocity-Based Training Tracker</title>
 
     <!-- React / Tailwind / Chart.js / Socket.io -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -75,10 +75,10 @@
           data: {
             labels: [],
             datasets: [
-              { label: 'vx', data: [], borderColor: '#6e6e6e', borderWidth: 1, pointRadius: 0, tension: 0.15 },
-              { label: 'vy', data: [], borderColor: '#6e6e6e', borderWidth: 1, pointRadius: 0, tension: 0.15 },
-              { label: 'vz', data: [], borderColor: '#5fa8ff', borderWidth: 2, pointRadius: 0, tension: 0.2 },
-              { label: 'vt', data: [], borderColor: '#ffffff', borderWidth: 2, pointRadius: 0, tension: 0.2 },
+              { label: 'vx', data: [], borderColor: mutedGray, borderWidth: 1, pointRadius: 0, tension: 0.15 },
+              { label: 'vy', data: [], borderColor: mutedGray', borderWidth: 1, pointRadius: 0, tension: 0.15 },
+              { label: 'vz', data: [], borderColor: '#fffbee', borderWidth: 2, pointRadius: 0, tension: 0.2 },
+              { label: 'vt', data: [], borderColor: '#f3d36b', borderWidth: 2, pointRadius: 0, tension: 0.2 },
               // concentric vt - only present during concentric windows, null otherwise => no connecting lines
               { label: 'concentric', data: [], borderColor: '#d14b4b', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: false }
             ]
@@ -306,7 +306,7 @@
                   <circle cx="12" cy="12" r="10" stroke="#caa23a" strokeWidth="1.5" />
                   <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke="#f3d36b" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                <h1 className="text-4xl font-bold tracking-tight">Velocity-Based Training Tracker</h1>
+                <h1 className="text-4xl font-bold tracking-tight">APEX | Velocity-Based Training Tracker</h1>
               </div>
               <p className="text-gymGoldBright/80">Real-time rep analysis • RIR prediction • AI Coach insights</p>
             </div>
@@ -434,3 +434,4 @@
   </script>
 </body>
 </html>
+
