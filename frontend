@@ -1,0 +1,503 @@
+ import React, { useEffect, useMemo, useRef, useState } from 'react'
+
+  const API_BASE = 'http://localhost:5001'
+
+  type MetricProps = {
+    label: string
+    value: string
+    sublabel?: string
+    accent?: string
+  }
+
+  type GraphProps = {
+    title: string
+    subtitle?: string
+    series: number[]
+    accent?: string
+    min?: number
+    max?: number
+  }
+
+  const Sparkline: React.FC<GraphProps> = ({ title, subtitle, series, accent = '#f6c453', min, max }) => {
+    const points = useMemo(() => {
+      if (!series.length) return ''
+      const width = 280
+      const height = 120
+      const domainMin = min ?? Math.min(...series)
+      const domainMax = max ?? Math.max(...series)
+      const span = domainMax - domainMin || 1
+      return series
+        .map((value, index) => {
+          const x = (index / Math.max(series.length - 1, 1)) * width
+          const y = height - ((value - domainMin) / span) * height
+          return `${x},${y}`
+        })
+        .join(' ')
+    }, [series, min, max])
+
+    const latest = series[series.length - 1] ?? 0
+
+    return (
+      <div className="card graph">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">{subtitle ?? 'Live feed'}</p>
+            <h3>{title}</h3>
+          </div>
+          <div className="badge" style={{ color: accent, borderColor: accent, background: 'transparent' }}>
+            {latest.toFixed(2)}
+          </div>
+        </div>
+        <svg className="sparkline" viewBox="0 0 280 120" role="img" aria-label={`${title} sparkline`}>
+          <defs>
+            <linearGradient id="sparklineFill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor={accent} stopOpacity="0.32" />
+              <stop offset="100%" stopColor={accent} stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          <path d={`M0,120 ${points} 280,120 Z`} fill="url(#sparklineFill)" stroke="none" vectorEffect="non-scaling-
+  stroke" />
+          <polyline points={points} fill="none" stroke={accent} strokeWidth="4" strokeLinecap="round" />
+        </svg>
+      </div>
+    )
+  }
+
+  const MetricCard: React.FC<MetricProps> = ({ label, value, sublabel, accent }) => (
+    <div className="card metric">
+      <p className="eyebrow">{label}</p>
+      <div className="metric-value" style={{ color: accent ?? '#e5f2ff' }}>
+        {value}
+      </div>
+      {sublabel && <p className="metric-sub">{sublabel}</p>}
+    </div>
+  )
+
+  const SectionHeader: React.FC<{ title: string; action?: React.ReactNode }> = ({ title, action }) => (
+    <div className="section-header">
+      <div>
+        <p className="eyebrow">Weightlifting RIR</p>
+        <h2>{title}</h2>
+      </div>
+      {action}
+    </div>
+  )
+
+  export default function App() {
+    const [view, setView] = useState<'dashboard' | 'analysis'>('dashboard')
+    const [isRecording, setIsRecording] = useState(false)
+    const [analyticsView, setAnalyticsView] = useState<'features' | 'velocity'>('features')
+    const [loadInput, setLoadInput] = useState('82')
+    const [recordingSeconds, setRecordingSeconds] = useState(0)
+    const [sessionDuration, setSessionDuration] = useState(0)
+    const lastActivityRef = useRef<number | null>(null)
+    const pollerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    const recordingSecondsRef = useRef(0)
+
+    const [liveVelocity, setLiveVelocity] = useState<number | null>(null)
+    const [liveVelocitySeries, setLiveVelocitySeries] = useState<number[]>([])
+    const [repCount, setRepCount] = useState(0)
+    const [sessionFeatures, setSessionFeatures] = useState<{
+      load_percent: number
+      velocity_loss: number
+      final_rep_velocity: number
+      peak_velocity_slope: number
+    } | null>(null)
+    const [rirPrediction, setRirPrediction] = useState<number | null>(null)
+    const [repVelocities, setRepVelocities] = useState<number[]>([])
+    const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+    const mockData = {
+      velocitySeries: [1.02, 0.98, 0.95, 0.9, 0.86, 0.83, 0.78, 0.74, 0.71, 0.68],
+      velocityLoss: 22,
+      finalRepVelocity: 0.32,
+      rirEstimate: 2.5,
+      repFeatureSeries: [0.92, 0.94, 0.91, 0.88, 0.86, 0.82, 0.8, 0.77, 0.73, 0.71],
+      slopeSeries: [1.05, 1.0, 0.94, 0.9, 0.84, 0.8, 0.75, 0.72, 0.7, 0.69],
+      summary: {
+        setDuration: '48s',
+        reps: 9,
+        loadPercent: 82,
+        notes: 'Steady until final 3 reps; small bar path drift on rep 7.'
+      }
+    }
+
+    const loadPercent = useMemo(() => {
+      const parsed = parseFloat(loadInput)
+      if (Number.isNaN(parsed)) return 0
+      return Math.min(100, Math.max(0, parsed))
+    }, [loadInput])
+
+    const startPolling = () => {
+      if (pollerRef.current) return
+      pollerRef.current = setInterval(() => {
+        fetchLiveData()
+      }, 200)
+    }
+
+    const stopPolling = () => {
+      if (pollerRef.current) {
+        clearInterval(pollerRef.current)
+        pollerRef.current = null
+      }
+    }
+
+    const fetchLiveData = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/live-data`)
+        if (!res.ok) throw new Error(`Live data error: ${res.status}`)
+        const data = await res.json()
+        console.log('[live-data]', data)
+        setLiveVelocity(data.latest_velocity ?? null)
+        setRepCount(data.rep_count ?? 0)
+        if (typeof data.latest_velocity === 'number') {
+          setLiveVelocitySeries((prev) => {
+            const next = [...prev, data.latest_velocity]
+            return next.slice(-120)
+          })
+        }
+        lastActivityRef.current = Date.now()
+        setErrorMessage(null)
+      } catch (err) {
+        console.log('[live-data] fetch failed', err)
+        setErrorMessage('Unable to reach backend. Is http://localhost:5001 running?')
+      }
+    }
+
+    const handleStart = async () => {
+      try {
+        setErrorMessage(null)
+        const payload = { load_percent: loadPercent }
+        console.log('[start-recording] sending', payload)
+        const res = await fetch(`${API_BASE}/start-recording`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        if (!res.ok) throw new Error(`Start failed: ${res.status}`)
+        await res.json()
+        lastActivityRef.current = Date.now()
+        setRecordingSeconds(0)
+        setSessionDuration(0)
+        setSessionFeatures(null)
+        setRirPrediction(null)
+        setRepVelocities([])
+        setLiveVelocitySeries([])
+        setRepCount(0)
+        setIsRecording(true)
+        setView('dashboard')
+        startPolling()
+      } catch (err) {
+        console.log('[start-recording] error', err)
+        setErrorMessage('Unable to start recording. Make sure the backend is running on port 5001.')
+      }
+    }
+
+    const stopRecording = async () => {
+      if (!isRecording) return
+      const duration = recordingSecondsRef.current
+      stopPolling()
+      setIsRecording(false)
+      setRecordingSeconds(0)
+      setSessionDuration(duration)
+      lastActivityRef.current = null
+      try {
+        console.log('[stop-recording] sending')
+        const res = await fetch(`${API_BASE}/stop-recording`, { method: 'POST' })
+        if (!res.ok) throw new Error(`Stop failed: ${res.status}`)
+        const data = await res.json()
+        console.log('[stop-recording] response', data)
+        if (data.features) setSessionFeatures(data.features)
+        if (typeof data.rir_prediction === 'number') setRirPrediction(data.rir_prediction)
+        if (Array.isArray(data.rep_data)) {
+          const peaks = data.rep_data
+            .map((rep: { velocity: number }[]) => {
+              const velocities = rep.map((s) => s.velocity ?? 0)
+              return velocities.length ? Math.max(...velocities) : -Infinity
+            })
+            .filter((v: number) => Number.isFinite(v))
+          setRepVelocities(peaks)
+          setRepCount(data.rep_count ?? peaks.length)
+        }
+        setErrorMessage(null)
+      } catch (err) {
+        console.log('[stop-recording] error', err)
+        setErrorMessage('Unable to stop recording or fetch session data.')
+      }
+    }
+
+    const handleComplete = async () => {
+      await stopRecording()
+      setView('analysis')
+    }
+
+    useEffect(() => {
+      if (!isRecording) return
+
+      const startTs = Date.now()
+      const hardStop = setTimeout(() => {
+        stopRecording().then(() => setView('analysis'))
+      }, 70000)
+
+      const recordingTicker = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTs) / 1000)
+        setRecordingSeconds(Math.min(70, elapsed))
+      }, 500)
+
+      const inactivityCheck = setInterval(() => {
+        const last = lastActivityRef.current
+        if (!last) return
+        if (Date.now() - last >= 8000) {
+          stopRecording().then(() => setView('analysis'))
+        }
+      }, 1000)
+
+      return () => {
+        clearTimeout(hardStop)
+        clearInterval(recordingTicker)
+        clearInterval(inactivityCheck)
+        stopPolling()
+      }
+    }, [isRecording, setView])
+
+    const ctaLabel = isRecording ? 'Complete Set' : 'Start Recording'
+    const ctaAction = isRecording ? handleComplete : handleStart
+
+    useEffect(() => {
+      recordingSecondsRef.current = recordingSeconds
+    }, [recordingSeconds])
+
+    const velocityLoss = sessionFeatures?.velocity_loss ?? mockData.velocityLoss
+    const finalRepVelocity = sessionFeatures?.final_rep_velocity ?? mockData.finalRepVelocity
+    const rirEstimate = rirPrediction ?? mockData.rirEstimate
+    const liveSeries =
+      analyticsView === 'velocity'
+        ? liveVelocitySeries
+        : repVelocities.length
+        ? repVelocities
+        : mockData.repFeatureSeries
+    const peakVelocitySeries = repVelocities.length ? repVelocities : mockData.velocitySeries
+    const displayRepCount = repCount || repVelocities.length || 0
+    const displayLoadPercent = sessionFeatures?.load_percent ?? loadPercent
+    const liveVelocityDisplay = liveVelocity != null ? liveVelocity.toFixed(2) : '--'
+
+    return (
+      <div className="shell">
+        <header className="topbar">
+          <div className="brand">
+            <div className="brand-dot" />
+            <span>RIR Tracker</span>
+          </div>
+          <div className="topbar-actions">
+            <span className="chip ghost">{view === 'dashboard' ? 'Live Capture' : 'Post-Set Analysis'}</span>
+            <button className="ghost-button" onClick={() => setView(view === 'dashboard' ? 'analysis' : 'dashboard')}>
+              {view === 'dashboard' ? 'View Analysis' : 'Back to Dashboard'}
+            </button>
+          </div>
+        </header>
+
+        {errorMessage && (
+          <div className="card" style={{ margin: '1rem 0', border: '1px solid #f96262', color: '#f96262' }}>
+            {errorMessage}
+          </div>
+        )}
+
+        {view === 'dashboard' && (
+          <main className="content">
+            <SectionHeader
+              title="Dashboard"
+              action={
+                <button className="primary-button" onClick={ctaAction}>
+                  {ctaLabel}
+                </button>
+              }
+            />
+
+            <div className="dashboard-layout">
+              <div className="primary-column">
+                <div className="card hero">
+                  <p className="eyebrow">{isRecording ? 'Capturing set' : 'Ready to record'}</p>
+                  <h1>{isRecording ? 'Push the set. We are tracking velocity.' : 'Start a set to estimate RIR live.'}
+  </h1>
+                  <p className="muted">
+                    Tracking: %1RM, velocity loss, final rep velocity, and peak velocity slope to keep your RIR on
+  target.
+                  </p>
+                  <div className="hero-actions">
+                    <button className="primary-button large" onClick={ctaAction}>
+                      {ctaLabel}
+                    </button>
+                    <div className="input-inline">
+                      <label htmlFor="load-input">Load (%1RM)</label>
+                      <input
+                        id="load-input"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={loadInput}
+                        onChange={(e) => setLoadInput(e.target.value)}
+                        aria-label="Load percentage of one rep max"
+                      />
+                    </div>
+                    <div className="chip">
+                      {isRecording ? `Recording • ${recordingSeconds}s` : sessionDuration ? `Last set ${sessionDuration}
+  s` : 'Idle'}
+                    </div>
+                  </div>
+                  <p className="muted">
+                    Auto-stops after 70s or 8s of sensor inactivity. Keep the bar moving to maintain the feed.
+                  </p>
+                </div>
+
+                <div className="card cues">
+                  <div className="card-header">
+                    <div>
+                      <p className="eyebrow">Session cues</p>
+                      <h3>Stay tight, accelerate the bar</h3>
+                    </div>
+                    <div className="badge">Rep {displayRepCount} of {displayRepCount}</div>
+                  </div>
+                  <div className="session-cues">
+                    <div className="cue">
+                      <p className="eyebrow">Current RIR</p>
+                      <p className="cue-value">{rirEstimate.toFixed(1)}</p>
+                      <p className="muted">Live estimate from latest set</p>
+                    </div>
+                    <div className="cue">
+                      <p className="eyebrow">Final rep velocity</p>
+                      <p className="cue-value">{finalRepVelocity.toFixed(2)} m/s</p>
+                      <p className="muted">Keep last rep above threshold</p>
+                    </div>
+                    <div className="cue">
+                      <p className="eyebrow">Set duration</p>
+                      <p className="cue-value">{sessionDuration ? `${sessionDuration}s` : mockData.summary.setDuration}
+  </p>
+                      <p className="muted">Time under tension for this set</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <aside className="card analytics-panel">
+                <div className="analytics-header">
+                  <div>
+                    <p className="eyebrow">Right rail dashboard</p>
+                    <h3>Set analytics</h3>
+                  </div>
+                  <div className="analytics-toggle">
+                    <button
+                      className={`toggle-button ${analyticsView === 'features' ? 'active' : ''}`}
+                      onClick={() => setAnalyticsView('features')}
+                    >
+                      Rep peaks
+                    </button>
+                    <button
+                      className={`toggle-button ${analyticsView === 'velocity' ? 'active' : ''}`}
+                      onClick={() => setAnalyticsView('velocity')}
+                    >
+                      Current velocity
+                    </button>
+                  </div>
+                </div>
+
+                <div className="graph-shell">
+                  {analyticsView === 'features' ? (
+                    <Sparkline
+                      title="Peak velocity per rep"
+                      subtitle="Rep peaks"
+                      series={peakVelocitySeries}
+                      accent="#ffd166"
+                      min={0.65}
+                      max={1.05}
+                    />
+                  ) : (
+                    <Sparkline
+                      title="Current set velocity"
+                      subtitle="m/s per rep"
+                      series={liveSeries}
+                      accent="#f96262"
+                      min={0.6}
+                      max={1.1}
+                    />
+                  )}
+                </div>
+
+                <div className="analytics-list">
+                  <div className="stat-row">
+                    <div>
+                      <p className="eyebrow">Velocity loss</p>
+                      <p className="muted">Drop from first to last rep</p>
+                    </div>
+                    <div className="stat-value accent">{velocityLoss}%</div>
+                  </div>
+                  <div className="stat-row">
+                    <div>
+                      <p className="eyebrow">Live velocity</p>
+                      <p className="muted">Latest sample (m/s)</p>
+                    </div>
+                    <div className="stat-value">{liveVelocityDisplay}</div>
+                  </div>
+                  <div className="stat-row">
+                    <div>
+                      <p className="eyebrow">Load</p>
+                      <p className="muted">Working % of 1RM</p>
+                    </div>
+                    <div className="stat-value">{displayLoadPercent}%</div>
+                  </div>
+                  <div className="stat-row">
+                    <div>
+                      <p className="eyebrow">Estimated RIR</p>
+                      <p className="muted">Model estimate for this set</p>
+                    </div>
+                    <div className="stat-value">{rirEstimate.toFixed(1)}</div>
+                  </div>
+                  <div className="stat-row">
+                    <div>
+                      <p className="eyebrow">Coach note</p>
+                      <p className="muted">{mockData.summary.notes}</p>
+                    </div>
+                    <div className="stat-value ghost">Post-set</div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </main>
+        )}
+
+        {view === 'analysis' && (
+          <main className="content">
+            <SectionHeader
+              title="Post-Set Analysis"
+              action={
+                <button className="ghost-button" onClick={() => setView('dashboard')}>
+                  Back to Dashboard
+                </button>
+              }
+            />
+
+            <div className="grid two">
+              <Sparkline title="Peak Velocity by Rep" subtitle="Rep peaks" series={peakVelocitySeries} accent="#f96262" /
+  >
+              <div className="card summary">
+                <p className="eyebrow">Full Set Summary</p>
+                <div className="summary-grid">
+                  <MetricCard label="Reps" value={`${displayRepCount}`} sublabel="Completed" />
+                  <MetricCard
+                    label="Duration"
+                    value={sessionDuration ? `${sessionDuration}s` : mockData.summary.setDuration}
+                    sublabel="Time under tension"
+                  />
+                  <MetricCard label="%1RM" value={`${displayLoadPercent}%`} sublabel="Training load" />
+                  <MetricCard label="Estimated RIR" value={rirEstimate.toFixed(1)} sublabel="End of set" />
+                </div>
+                <div className="notes">
+                  <p className="eyebrow">Coach Notes</p>
+                  <p className="muted">{mockData.summary.notes}</p>
+                </div>
+              </div>
+            </div>
+          </main>
+        )}
+      </div>
+    )
+  }
