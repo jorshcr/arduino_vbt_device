@@ -1,6 +1,14 @@
 # Apex-RIR-Prediction
 This project utilizes the IMU embedded on an Arduino Nano BLE Sense 33 to collect and segment rep data from an exercise in real time, which is then used to predict the reps in reserve (failure proximity) of the user. 
 
+## Data pipeline
+
+![Research-style diagram of the Arduino VBT data pipeline](docs/figures/data-pipeline.svg)
+
+**Figure 1.** On-device acceleration filtering and integration produce a serial velocity stream. The Python backend segments concentric repetitions and builds a three-input feature vector for a random forest fitted at startup. The browser displays live motion and post-set RIR estimates. Velocity loss and peak-speed trends are display analytics, not model inputs.
+
+[Download PNG](docs/figures/data-pipeline.png) · [Figure details and source mapping](docs/data-pipeline.md)
+
 This System includes the following code:
 
 1. Arduino Code - Collects real time Acceleration data using IMU, applies a 1st order High Pass Filter to cancel out drift, calculates Velocity by integrating Acceleration with time, applies the filter once again, then streams Velocity data to MATLAB
